@@ -1,0 +1,7 @@
+.direnv/
+*.apk
+*.ab
+*.png
+*.tmp
+__pycache__/
+.cache/

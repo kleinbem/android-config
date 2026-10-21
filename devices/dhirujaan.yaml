@@ -1,0 +1,7 @@
+name: dhirujaan
+model: "Samsung Galaxy (Dhirujaan)"
+serial: "RFCT90BVPNE"
+ip: "10.0.0.238"
+
+display:
+  animations: 0.5

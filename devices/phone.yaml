@@ -1,0 +1,52 @@
+name: phone
+model: "Samsung Galaxy XCover 6 Pro (SM-G736B)"
+serial: "R5CX31EERDT"
+ip: "10.0.0.8"
+netbird_name: "xcoverpro2eea"
+
+display:
+  peak_refresh_rate: 120.0
+  min_refresh_rate: 60.0
+  animations: 0.5
+
+dns:
+  mode: hostname
+  specifier: dns.adguard-dns.com
+
+keyboard:
+  default: "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME"
+
+launcher:
+  package: "app.lawnchair"
+  activity: "app.lawnchair/.LawnchairLauncher"
+  backup: "clean_final.lawnchairbackup"
+
+doze_whitelist:
+  - com.termux
+  - io.netbird.client
+  - io.heckel.ntfy
+  - io.homeassistant.companion.android
+  - com.github.catfriend1.syncthingandroid
+  - app.lawnchair
+  - moe.shizuku.privileged.api
+  - com.looker.droidify
+  - de.astubenbord.paperless_mobile
+
+debloat:
+  - com.facebook.katana
+  - com.facebook.system
+  - com.facebook.appmanager
+  - com.facebook.services
+  - com.samsung.android.ipsgeofence
+  - com.samsung.android.app.spage
+  - com.samsung.android.bixby.agent
+  - com.samsung.android.bixby.wakeup
+  - com.samsung.android.kidsinstaller
+  - com.samsung.android.aremoji
+  - com.samsung.android.app.tips
+
+permissions:
+  flar2.devcheck:
+    - android.permission.BATTERY_STATS
+    - android.permission.DUMP
+    - android.permission.PACKAGE_USAGE_STATS
