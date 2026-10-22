@@ -33,10 +33,6 @@ doze_whitelist:
   - de.astubenbord.paperless_mobile
 
 debloat:
-  - com.facebook.katana
-  - com.facebook.system
-  - com.facebook.appmanager
-  - com.facebook.services
   - com.samsung.android.ipsgeofence
   - com.samsung.android.app.spage
   - com.samsung.android.bixby.agent
