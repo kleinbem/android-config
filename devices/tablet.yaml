@@ -29,3 +29,8 @@ doze_whitelist:
 
 debloat:
   - com.google.android.googlequicksearchbox
+
+settings:
+  global:
+    stay_on_while_plugged_in: 7
+

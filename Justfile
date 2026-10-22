@@ -3,6 +3,10 @@ set working-directory := "."
 default:
     @just --list
 
+# ==============================================================================
+# Fleet Overview & Configuration
+# ==============================================================================
+
 # Show fleet status across all connected devices (battery, Shizuku, NetBird, foreground)
 [group("Fleet")]
 status:
@@ -77,6 +81,87 @@ termux-provision device="phone":
         echo "Add this key to nix-config/modules/nixos/keys.nix to authorize it."
     fi
 
+# ==============================================================================
+# Migration & Data Management
+# ==============================================================================
+
+# Migrate media & WhatsApp directly between two devices
+[group("Migration")]
+migrate-media src="phone-old" dst="phone":
+    @python3 scripts/migrate.py media --source {{src}} --target {{dst}}
+
+# Pull WhatsApp, DCIM, and downloads into a local backup directory
+[group("Migration")]
+backup-media src="phone" out_dir="./backup":
+    @python3 scripts/migrate.py backup-media --source {{src}} --out {{out_dir}}
+
+# Restore local backup directory to target device
+[group("Migration")]
+restore-media in_dir="./backup" dst="phone":
+    @python3 scripts/migrate.py restore-media --input {{in_dir}} --target {{dst}}
+
+# Sideload/clone third-party apps from source to destination device
+[group("Migration")]
+clone-apps src="phone-old" dst="phone" filter="":
+    #!/usr/bin/env bash
+    if [ -n "{{filter}}" ]; then
+        python3 scripts/migrate.py clone-apps --source {{src}} --target {{dst}} --filter "{{filter}}"
+    else
+        python3 scripts/migrate.py clone-apps --source {{src}} --target {{dst}}
+    fi
+
+# Trigger Android MediaScanner to index newly pushed photos & files
+[group("Migration")]
+media-scan target="phone":
+    @python3 scripts/migrate.py scan --target {{target}}
+
+# ==============================================================================
+# Diagnostics & Remote Control
+# ==============================================================================
+
+# Interactive ADB shell into selected device
+[group("Diagnostics")]
+shell target="phone":
+    #!/usr/bin/env bash
+    SERIAL=$(python3 -c "import yaml, os; print(yaml.safe_load(open('devices/{{target}}.yaml'))['serial'])" 2>/dev/null || echo "{{target}}")
+    adb -s "$SERIAL" shell
+
+# Capture a high-res screenshot from device directly to host
+[group("Diagnostics")]
+screenshot target="phone" out_file="screenshot.png":
+    #!/usr/bin/env bash
+    SERIAL=$(python3 -c "import yaml, os; print(yaml.safe_load(open('devices/{{target}}.yaml'))['serial'])" 2>/dev/null || echo "{{target}}")
+    echo "📸 Capturing screenshot from $SERIAL -> {{out_file}}..."
+    adb -s "$SERIAL" exec-out screencap -p > "{{out_file}}"
+    echo "✅ Saved to {{out_file}}"
+
+# List third-party installed packages on device
+[group("Diagnostics")]
+list-apps target="phone":
+    #!/usr/bin/env bash
+    SERIAL=$(python3 -c "import yaml, os; print(yaml.safe_load(open('devices/{{target}}.yaml'))['serial'])" 2>/dev/null || echo "{{target}}")
+    adb -s "$SERIAL" shell pm list packages -3 | sed 's/package://' | sort
+
+# Enable ADB over TCP/IP and connect wirelessly
+[group("Diagnostics")]
+wifi-adb target="phone":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    SERIAL=$(python3 -c "import yaml, os; print(yaml.safe_load(open('devices/{{target}}.yaml'))['serial'])" 2>/dev/null || echo "{{target}}")
+    IP=$(python3 -c "import yaml, os; print(yaml.safe_load(open('devices/{{target}}.yaml')).get('ip', ''))" 2>/dev/null || echo "")
+    if [ -z "$IP" ]; then
+        echo "❌ No IP address configured for {{target}}."
+        exit 1
+    fi
+    echo "📶 Enabling ADB TCP/IP on $SERIAL (port 5555)..."
+    adb -s "$SERIAL" tcpip 5555
+    echo "🔌 Connecting to $IP:5555..."
+    adb connect "$IP:5555"
+
+# ==============================================================================
+# Mirroring & Companion Workflows
+# ==============================================================================
+
 # Screen mirror via scrcpy (auto-detects USB or wireless)
 [group("Mirror")]
 scrcpy target="phone" *args:
@@ -97,6 +182,11 @@ scrcpy target="phone" *args:
         dhirujaan)
             SERIAL="RFCT90BVPNE"
             IP="10.0.0.238"
+            BITRATE="16M"
+            ;;
+        phone-old)
+            SERIAL="R5CW617ZWCF"
+            IP=""
             BITRATE="16M"
             ;;
         *)

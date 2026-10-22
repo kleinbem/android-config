@@ -50,3 +50,14 @@ permissions:
     - android.permission.BATTERY_STATS
     - android.permission.DUMP
     - android.permission.PACKAGE_USAGE_STATS
+
+appops:
+  com.termux:
+    - MANAGE_EXTERNAL_STORAGE: allow
+  me.zhanghai.android.files:
+    - MANAGE_EXTERNAL_STORAGE: allow
+
+settings:
+  global:
+    stay_on_while_plugged_in: 7
+

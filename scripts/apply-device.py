@@ -88,6 +88,27 @@ def apply_device(profile_path, connected_serials):
         for p in p_list:
             adb(serial, 'shell', 'pm', 'grant', pkg, p)
 
+    # 8. AppOps Permissions (Android 11-16 Scoped Storage)
+    appops = cfg.get('appops', {})
+    for pkg, ops in appops.items():
+        print(f"🔒 Setting AppOps for {pkg}...")
+        for op in ops:
+            if isinstance(op, dict):
+                for k, v in op.items():
+                    adb(serial, 'shell', 'cmd', 'appops', 'set', pkg, k, str(v))
+            elif isinstance(op, str):
+                parts = op.replace(':', ' ').split()
+                if len(parts) == 2:
+                    adb(serial, 'shell', 'cmd', 'appops', 'set', pkg, parts[0], parts[1])
+
+    # 9. Settings (global, secure, system)
+    settings = cfg.get('settings', {})
+    for namespace in ['global', 'secure', 'system']:
+        ns_settings = settings.get(namespace, {})
+        for key, val in ns_settings.items():
+            print(f"⚙️  Setting {namespace}.{key} = {val}...")
+            adb(serial, 'shell', 'settings', 'put', namespace, key, str(val))
+
     print(f"✅ Configuration applied cleanly to {name}!")
     return True
 
