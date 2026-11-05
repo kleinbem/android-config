@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import subprocess, os, sys
+import subprocess
 
 def get_devices():
     out = subprocess.check_output(['adb', 'devices'], text=True)
@@ -34,12 +34,17 @@ def main():
         level, temp, ac, usb, status = "?", "?", "?", "?", "?"
         for line in batt_raw.splitlines():
             line = line.strip()
-            if line.startswith('level:'): level = line.split(':')[1].strip() + "%"
+            if line.startswith('level:'):
+                level = line.split(':')[1].strip() + "%"
             elif line.startswith('temperature:'):
-                try: temp = f"{float(line.split(':')[1].strip())/10:.1f}°C"
-                except: pass
-            elif line.startswith('AC powered:'): ac = line.split(':')[1].strip()
-            elif line.startswith('USB powered:'): usb = line.split(':')[1].strip()
+                try:
+                    temp = f"{float(line.split(':')[1].strip())/10:.1f}°C"
+                except ValueError:
+                    pass
+            elif line.startswith('AC powered:'):
+                ac = line.split(':')[1].strip()
+            elif line.startswith('USB powered:'):
+                usb = line.split(':')[1].strip()
             elif line.startswith('status:'):
                 st_code = line.split(':')[1].strip()
                 status = "Charging" if st_code == "2" else ("Full" if st_code == "5" else "Discharging")

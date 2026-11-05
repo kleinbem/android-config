@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-import sys, os, subprocess, yaml, glob
+import sys
+import os
+import subprocess
+import yaml
+import glob
 
 def get_connected_devices():
     out = subprocess.check_output(['adb', 'devices'], text=True)
@@ -26,9 +30,9 @@ def apply_device(profile_path, connected_serials):
         print(f"⚠️  Device '{name}' ({serial}) is NOT connected. Skipping.")
         return False
 
-    print(f"\n==================================================")
+    print("\n==================================================")
     print(f"📱 Applying configuration to: {cfg.get('model', name)} [{serial}]")
-    print(f"==================================================")
+    print("==================================================")
 
     # 1. Display & Animations
     display = cfg.get('display', {})
