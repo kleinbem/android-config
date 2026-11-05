@@ -8,8 +8,7 @@ import sys
 import os
 import argparse
 import subprocess
-import glob
-import time
+import tempfile
 
 MEDIA_PATHS = [
     ("WhatsApp Media & DB", "/sdcard/Android/media/com.whatsapp", "/sdcard/Android/media"),
@@ -60,7 +59,6 @@ def cmd_backup_media(args):
 
     for label, remote_path, _ in MEDIA_PATHS:
         print(f"\n📥 Pulling {label} ({remote_path})...")
-        target_local = os.path.join(out_dir, os.path.basename(remote_path.rstrip('/')))
         res = subprocess.run(['adb', '-s', src, 'pull', remote_path, out_dir])
         if res.returncode == 0:
             print(f"✅ Successfully backed up {label}.")
@@ -97,9 +95,8 @@ def cmd_restore_media(args):
 def cmd_migrate_media(args):
     src = get_serial(args.source)
     dst = get_serial(args.target)
-    temp_dir = f"/tmp/android_migration_{int(time.time())}"
-    os.makedirs(temp_dir, exist_ok=True)
-    print(f"🔄 Direct Device-to-Device Media Migration:")
+    temp_dir = tempfile.mkdtemp(prefix="android_migration_")
+    print("🔄 Direct Device-to-Device Media Migration:")
     print(f"   Source:      {src}")
     print(f"   Destination: {dst}")
     print(f"   Buffer:      {temp_dir}")
@@ -129,8 +126,7 @@ def cmd_clone_apps(args):
         packages = [p for p in packages if filter_pkg in p]
 
     print(f"Found {len(packages)} third-party package(s) on source.")
-    temp_dir = f"/tmp/android_apk_clone_{int(time.time())}"
-    os.makedirs(temp_dir, exist_ok=True)
+    temp_dir = tempfile.mkdtemp(prefix="android_apk_clone_")
 
     success, failed = 0, 0
     for i, pkg in enumerate(packages, 1):
