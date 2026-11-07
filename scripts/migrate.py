@@ -103,13 +103,12 @@ def cmd_migrate_media(args):
     src = get_serial(args.source)
     dst = get_serial(args.target)
     temp_dir = tempfile.mkdtemp(prefix="android_migration_")
-    print("🔄 Direct Device-to-Device Media Migration:")
-    print(f"   Source:      {src}")
-    print(f"   Destination: {dst}")
-    print(f"   Buffer:      {temp_dir}")
-
     # The buffer holds a full media copy: remove it on every exit path.
     try:
+        print("🔄 Direct Device-to-Device Media Migration:")
+        print(f"   Source:      {src}")
+        print(f"   Destination: {dst}")
+        print(f"   Buffer:      {temp_dir}")
         args.out = temp_dir
         failed = cmd_backup_media(args)
         args.input = temp_dir
@@ -138,33 +137,35 @@ def cmd_clone_apps(args):
     print(f"Found {len(packages)} third-party package(s) on source.")
     temp_dir = tempfile.mkdtemp(prefix="android_apk_clone_")
 
-    success, failed = 0, 0
-    for i, pkg in enumerate(packages, 1):
-        print(f"[{i}/{len(packages)}] Sideloading {pkg}...")
-        try:
-            apk_paths = adb(src, 'shell', 'pm', 'path', pkg).splitlines()
-            if not apk_paths:
-                raise RuntimeError("pm path returned no APK")
-            apk_path = apk_paths[0].replace('package:', '').strip()
-            local_apk = os.path.join(temp_dir, f"{pkg}.apk")
-            subprocess.run(['adb', '-s', src, 'pull', apk_path, local_apk], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            if os.path.exists(local_apk):
-                res = subprocess.run(['adb', '-s', dst, 'install', '-r', local_apk], capture_output=True, text=True)
-                if 'Success' in res.stdout:
-                    print(f"   ✅ Installed {pkg}")
-                    success += 1
+    # Pulled APKs live here: remove them even on Ctrl-C.
+    try:
+        success, failed = 0, 0
+        for i, pkg in enumerate(packages, 1):
+            print(f"[{i}/{len(packages)}] Sideloading {pkg}...")
+            try:
+                apk_paths = adb(src, 'shell', 'pm', 'path', pkg).splitlines()
+                if not apk_paths:
+                    raise RuntimeError("pm path returned no APK")
+                apk_path = apk_paths[0].replace('package:', '').strip()
+                local_apk = os.path.join(temp_dir, f"{pkg}.apk")
+                subprocess.run(['adb', '-s', src, 'pull', apk_path, local_apk], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if os.path.exists(local_apk):
+                    res = subprocess.run(['adb', '-s', dst, 'install', '-r', local_apk], capture_output=True, text=True)
+                    if 'Success' in res.stdout:
+                        print(f"   ✅ Installed {pkg}")
+                        success += 1
+                    else:
+                        print(f"   ⚠️ Failed to install {pkg}: {res.stderr.strip() or res.stdout.strip()}")
+                        failed += 1
+                    os.remove(local_apk)
                 else:
-                    print(f"   ⚠️ Failed to install {pkg}: {res.stderr.strip() or res.stdout.strip()}")
+                    print(f"   ⚠️ Could not pull APK for {pkg}")
                     failed += 1
-                os.remove(local_apk)
-            else:
-                print(f"   ⚠️ Could not pull APK for {pkg}")
+            except Exception as e:
+                print(f"   ⚠️ Error migrating {pkg}: {e}")
                 failed += 1
-        except Exception as e:
-            print(f"   ⚠️ Error migrating {pkg}: {e}")
-            failed += 1
-
-    shutil.rmtree(temp_dir, ignore_errors=True)
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
     print(f"\n🎉 App clone complete: {success} succeeded, {failed} failed.")
     return failed
 
