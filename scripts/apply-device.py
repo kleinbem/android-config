@@ -42,10 +42,10 @@ def adb(serial, *args):
 def apply_device(profile_path, connected_serials):
     with open(profile_path, 'r') as f:
         cfg = yaml.safe_load(f)
+    failures.clear()
     if not isinstance(cfg, dict):
         print(f"⚠️  Profile {profile_path} is empty or not a mapping. Skipping.")
         return False
-    failures.clear()
 
     name = cfg.get('name', os.path.basename(profile_path).replace('.yaml', ''))
     serial = cfg.get('serial')
@@ -174,6 +174,9 @@ def main():
     print(f"\n🎉 Finished applying configurations ({success_count} device(s) updated cleanly).")
     if failed:
         print(f"❌ Failures on: {', '.join(failed)}")
+        sys.exit(1)
+    if target != 'all' and success_count == 0:
+        # A named device that was skipped (not connected, bad profile) is a failure.
         sys.exit(1)
 
 if __name__ == '__main__':

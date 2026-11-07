@@ -17,18 +17,24 @@ def get_devices():
             devs.append(line.split()[0])
     return devs
 
+timeouts = []
+
+
 def adb(serial, *args):
+    """Run an adb query; a timeout is recorded so the report can say so."""
     cmd = ['adb', '-s', serial] + list(args)
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=ADB_TIMEOUT)
     except subprocess.TimeoutExpired:
+        timeouts.append((serial, ' '.join(args)))
         return ''
     return res.stdout.strip()
 
 def oneui_suffix(raw):
     """' (One UI 6.1)' for ro.build.version.oneui=60100, '' if absent or odd."""
     try:
-        return f" (One UI {int(raw) / 10000:.1f})"
+        v = int(raw)
+        return f" (One UI {v // 10000}.{v // 100 % 100})"
     except ValueError:
         return ''
 
@@ -93,8 +99,12 @@ def main():
         print(f"   NetBird: {netbird_ip}")
         print(f"   Shizuku: {shizuku}")
         print(f"   Active Window: {current_focus}")
+        timed_out = [cmd for serial, cmd in timeouts if serial == s]
+        if timed_out:
+            print(f"   ⚠️  Timed out (values above may be wrong): {', '.join(timed_out)}")
 
     print("\n================================================================================")
 
 if __name__ == '__main__':
     main()
+    sys.exit(1 if timeouts else 0)
