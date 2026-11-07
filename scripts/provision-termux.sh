@@ -165,14 +165,30 @@ alias nas=\"ssh nas\"
 alias orin=\"ssh orin\"
 $END_MARK"
 
-# Older versions wrote an unmarked block; drop it once.
-sed -i '/^# Kleinbem Fleet shortcuts$/,/^alias orin="ssh orin"$/d' ~/.bashrc 2>/dev/null || true
+# Deletes the lines from $2 to $3 (exact lines) in file $1, but only when
+# both are there: a range without its end would take the rest of the file.
+remove_block() {
+  local f="$1"
+  [ -f "$f" ] || return 0
+  awk -v b="$2" -v e="$3" '
+    !inb && $0 == b { inb = 1; buf = $0 "\n"; next }
+    inb { buf = buf $0 "\n"; if ($0 == e) { inb = 0; buf = "" }; next }
+    { print }
+    END { if (inb) { printf "%s", buf; print "warning: unclosed block in " FILENAME > "/dev/stderr" } }
+  ' "$f" >"$f.tmp" && mv "$f.tmp" "$f"
+}
+
+# Appending to a file without a final newline would join the last line.
+append_line() {
+  local f="$1"
+  touch "$f"
+  [ -s "$f" ] && [ -n "$(tail -c1 "$f")" ] && echo >>"$f"
+  printf '%s\n' "$2" >>"$f"
+}
 
 install_block() {
-  local rc="$1"
-  touch "$rc"
-  sed -i "/^$BEGIN_MARK\$/,/^$END_MARK\$/d" "$rc"
-  printf '%s\n' "$FLEET_BLOCK" >>"$rc"
+  remove_block "$1" "$BEGIN_MARK" "$END_MARK"
+  append_line "$1" "$FLEET_BLOCK"
 }
 
 install_block ~/.bashrc
@@ -180,7 +196,7 @@ install_block ~/.bashrc
 
 touch ~/.bash_profile
 grep -qxF '[[ -f ~/.bashrc ]] && source ~/.bashrc' ~/.bash_profile ||
-  echo '[[ -f ~/.bashrc ]] && source ~/.bashrc' >>~/.bash_profile
+  append_line ~/.bash_profile '[[ -f ~/.bashrc ]] && source ~/.bashrc'
 
 echo "✅ Provisioning complete for $DEVICE_NAME!"
 echo "🚀 Type 'herdr' to connect."

@@ -56,8 +56,13 @@ termux-provision device="phone":
     #!/usr/bin/env bash
     set -euo pipefail
     DEV="{{device}}"
-    # The profile's device, over USB (serial) or wireless ADB (ip:5555).
-    read -r USB_SERIAL IP < <(python3 -c "import sys, yaml; c = yaml.safe_load(open(sys.argv[1])) or {}; print(c.get('serial', '-'), c.get('ip', '-'))" "devices/$DEV.yaml" 2>/dev/null || echo "$DEV -")
+    # The profile's device, over USB (serial) or wireless ADB (ip:5555); a
+    # name without a profile is taken as a serial. Profile errors stay visible.
+    if [ -f "devices/$DEV.yaml" ]; then
+        read -r USB_SERIAL IP < <(python3 -c "import sys, yaml; c = yaml.safe_load(open(sys.argv[1])) or {}; print(c.get('serial') or '-', c.get('ip') or '-')" "devices/$DEV.yaml")
+    else
+        USB_SERIAL=$DEV IP=-
+    fi
     CONNECTED=$(adb devices | awk 'NR > 1 && $2 == "device" { print $1 }' || true)
     SERIAL=""
     for s in "$USB_SERIAL" "$IP:5555"; do
