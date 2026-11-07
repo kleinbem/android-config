@@ -1,0 +1,36 @@
+name: tablet
+model: "Huawei MatePad Pro (MRX-W09)"
+serial: "QBK6R20825000010"
+ip: "10.0.0.215"
+netbird_name: "MRX-W09NM"
+
+display:
+  animations: 0.5
+
+keyboard:
+  default: "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME"
+
+launcher:
+  package: "app.lawnchair"
+  activity: "app.lawnchair/.LawnchairLauncher"
+  backup: "clean_final.lawnchairbackup"
+
+doze_whitelist:
+  - com.termux
+  - io.netbird.client
+  - io.heckel.ntfy
+  - io.homeassistant.companion.android.minimal
+  - com.github.catfriend1.syncthingfork
+  - app.lawnchair
+  - moe.shizuku.privileged.api
+  - com.looker.droidify
+  - at.bitfire.davdroid
+  - com.android.chrome
+
+debloat:
+  - com.google.android.googlequicksearchbox
+
+settings:
+  global:
+    stay_on_while_plugged_in: 7
+

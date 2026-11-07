@@ -1,0 +1,10 @@
+name: phone-old
+model: "Samsung Galaxy XCover 6 Pro (SM-G736B) - Old/Backup"
+serial: "R5CW617ZWCF"
+netbird_name: "xcoverpro2eea-old"
+
+display:
+  animations: 0.5
+
+keyboard:
+  default: "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME"
