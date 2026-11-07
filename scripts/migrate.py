@@ -7,6 +7,7 @@ Safely moves photos, WhatsApp media, downloads, and third-party apps between And
 import sys
 import os
 import argparse
+import shutil
 import subprocess
 import tempfile
 
@@ -32,7 +33,7 @@ def get_serial(target):
     if os.path.exists(profile_path):
         import yaml
         with open(profile_path, 'r') as f:
-            cfg = yaml.safe_load(f)
+            cfg = yaml.safe_load(f) or {}
             return cfg.get('serial', target)
     return target
 
@@ -57,6 +58,7 @@ def cmd_backup_media(args):
     os.makedirs(out_dir, exist_ok=True)
     print(f"📦 Backing up media from [{src}] to [{out_dir}]...")
 
+    failed = 0
     for label, remote_path, _ in MEDIA_PATHS:
         print(f"\n📥 Pulling {label} ({remote_path})...")
         res = subprocess.run(['adb', '-s', src, 'pull', remote_path, out_dir])
@@ -64,8 +66,10 @@ def cmd_backup_media(args):
             print(f"✅ Successfully backed up {label}.")
         else:
             print(f"⚠️ Warning: Failed or partial transfer for {label}.")
+            failed += 1
 
-    print(f"\n🎉 Backup complete in: {out_dir}")
+    print(f"\n🎉 Backup complete in: {out_dir} ({failed} failed transfer(s))")
+    return failed
 
 def cmd_restore_media(args):
     dst = get_serial(args.target)
@@ -75,6 +79,7 @@ def cmd_restore_media(args):
         sys.exit(1)
 
     print(f"📤 Restoring media from [{in_dir}] to [{dst}]...")
+    failed = 0
     for label, remote_path, parent_remote in MEDIA_PATHS:
         folder_name = os.path.basename(remote_path.rstrip('/'))
         local_src = os.path.join(in_dir, folder_name)
@@ -86,32 +91,36 @@ def cmd_restore_media(args):
                 print(f"✅ Successfully restored {label}.")
             else:
                 print(f"⚠️ Warning: Failed or partial transfer for {label}.")
+                failed += 1
         else:
             print(f"ℹ️ Skipping {label} (not found in backup folder).")
 
     scan_media(dst)
-    print(f"\n🎉 Restore complete on device {dst}!")
+    print(f"\n🎉 Restore complete on device {dst} ({failed} failed transfer(s)).")
+    return failed
 
 def cmd_migrate_media(args):
     src = get_serial(args.source)
     dst = get_serial(args.target)
     temp_dir = tempfile.mkdtemp(prefix="android_migration_")
-    print("🔄 Direct Device-to-Device Media Migration:")
-    print(f"   Source:      {src}")
-    print(f"   Destination: {dst}")
-    print(f"   Buffer:      {temp_dir}")
-
-    # 1. Pull from source
-    args.out = temp_dir
-    cmd_backup_media(args)
-
-    # 2. Push to target
-    args.input = temp_dir
-    cmd_restore_media(args)
-
-    print(f"\n🧹 Cleaning temporary buffer {temp_dir}...")
-    subprocess.run(['rm', '-rf', temp_dir])
+    # The buffer holds a full media copy: remove it on every exit path.
+    try:
+        print("🔄 Direct Device-to-Device Media Migration:")
+        print(f"   Source:      {src}")
+        print(f"   Destination: {dst}")
+        print(f"   Buffer:      {temp_dir}")
+        args.out = temp_dir
+        failed = cmd_backup_media(args)
+        args.input = temp_dir
+        failed += cmd_restore_media(args)
+    finally:
+        print(f"\n🧹 Cleaning temporary buffer {temp_dir}...")
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    if failed:
+        print(f"⚠️ Migration finished with {failed} failed transfer(s).")
+        return failed
     print("✅ Direct migration finished cleanly!")
+    return 0
 
 def cmd_clone_apps(args):
     src = get_serial(args.source)
@@ -128,31 +137,37 @@ def cmd_clone_apps(args):
     print(f"Found {len(packages)} third-party package(s) on source.")
     temp_dir = tempfile.mkdtemp(prefix="android_apk_clone_")
 
-    success, failed = 0, 0
-    for i, pkg in enumerate(packages, 1):
-        print(f"[{i}/{len(packages)}] Sideloading {pkg}...")
-        try:
-            apk_path = adb(src, 'shell', 'pm', 'path', pkg).splitlines()[0].replace('package:', '').strip()
-            local_apk = os.path.join(temp_dir, f"{pkg}.apk")
-            subprocess.run(['adb', '-s', src, 'pull', apk_path, local_apk], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            if os.path.exists(local_apk):
-                res = subprocess.run(['adb', '-s', dst, 'install', '-r', local_apk], capture_output=True, text=True)
-                if 'Success' in res.stdout:
-                    print(f"   ✅ Installed {pkg}")
-                    success += 1
+    # Pulled APKs live here: remove them even on Ctrl-C.
+    try:
+        success, failed = 0, 0
+        for i, pkg in enumerate(packages, 1):
+            print(f"[{i}/{len(packages)}] Sideloading {pkg}...")
+            try:
+                apk_paths = adb(src, 'shell', 'pm', 'path', pkg).splitlines()
+                if not apk_paths:
+                    raise RuntimeError("pm path returned no APK")
+                apk_path = apk_paths[0].replace('package:', '').strip()
+                local_apk = os.path.join(temp_dir, f"{pkg}.apk")
+                subprocess.run(['adb', '-s', src, 'pull', apk_path, local_apk], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if os.path.exists(local_apk):
+                    res = subprocess.run(['adb', '-s', dst, 'install', '-r', local_apk], capture_output=True, text=True)
+                    if 'Success' in res.stdout:
+                        print(f"   ✅ Installed {pkg}")
+                        success += 1
+                    else:
+                        print(f"   ⚠️ Failed to install {pkg}: {res.stderr.strip() or res.stdout.strip()}")
+                        failed += 1
+                    os.remove(local_apk)
                 else:
-                    print(f"   ⚠️ Failed to install {pkg}: {res.stderr.strip() or res.stdout.strip()}")
+                    print(f"   ⚠️ Could not pull APK for {pkg}")
                     failed += 1
-                os.remove(local_apk)
-            else:
-                print(f"   ⚠️ Could not pull APK for {pkg}")
+            except Exception as e:
+                print(f"   ⚠️ Error migrating {pkg}: {e}")
                 failed += 1
-        except Exception as e:
-            print(f"   ⚠️ Error migrating {pkg}: {e}")
-            failed += 1
-
-    subprocess.run(['rm', '-rf', temp_dir])
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
     print(f"\n🎉 App clone complete: {success} succeeded, {failed} failed.")
+    return failed
 
 def cmd_scan(args):
     dst = get_serial(args.target)
@@ -193,7 +208,7 @@ def main():
     p_scan.set_defaults(func=cmd_scan)
 
     args = parser.parse_args()
-    args.func(args)
+    sys.exit(1 if args.func(args) else 0)
 
 if __name__ == '__main__':
     main()

@@ -1,18 +1,48 @@
 #!/usr/bin/env python3
 import subprocess
+import sys
+
+ADB_TIMEOUT = 15
+
 
 def get_devices():
-    out = subprocess.check_output(['adb', 'devices'], text=True)
+    try:
+        out = subprocess.check_output(['adb', 'devices'], text=True, timeout=ADB_TIMEOUT)
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"❌ Could not list ADB devices: {e}")
+        sys.exit(1)
     devs = []
     for line in out.splitlines()[1:]:
         if '\tdevice' in line:
             devs.append(line.split()[0])
     return devs
 
+# (serial, query, reason) for every query that timed out or exited non-zero;
+# all queries here succeed on a healthy device.
+problems = []
+
+
 def adb(serial, *args):
+    """Run an adb query; failures are recorded so the report can say so."""
     cmd = ['adb', '-s', serial] + list(args)
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=ADB_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        problems.append((serial, ' '.join(args), 'timed out'))
+        return ''
+    if res.returncode != 0:
+        problems.append((serial, ' '.join(args), f'exit {res.returncode}'))
     return res.stdout.strip()
+
+def oneui_suffix(raw):
+    """' (One UI 6.1)' for 60100, ' (One UI 5.1.1)' for 50101, '' if absent or odd."""
+    try:
+        v = int(raw)
+        patch = f".{v % 100}" if v % 100 else ""
+        return f" (One UI {v // 10000}.{v // 100 % 100}{patch})"
+    except ValueError:
+        return ''
+
 
 def main():
     devs = get_devices()
@@ -69,13 +99,17 @@ def main():
                 current_focus = line.split('Window{')[-1].split('}')[0].strip()
 
         print(f"\n🔹 {model} [{s}]")
-        print(f"   OS: Android {android_v}" + (f" (One UI {int(oneui_v)/10000:.1f})" if oneui_v else ""))
+        print(f"   OS: Android {android_v}" + oneui_suffix(oneui_v))
         print(f"   Battery: {level} ({status}, {temp}, AC={ac}, USB={usb})")
         print(f"   NetBird: {netbird_ip}")
         print(f"   Shizuku: {shizuku}")
         print(f"   Active Window: {current_focus}")
+        failed = [f"{q} ({why})" for serial, q, why in problems if serial == s]
+        if failed:
+            print(f"   ⚠️  Failed queries (values above may be wrong): {', '.join(failed)}")
 
     print("\n================================================================================")
 
 if __name__ == '__main__':
     main()
+    sys.exit(1 if problems else 0)
