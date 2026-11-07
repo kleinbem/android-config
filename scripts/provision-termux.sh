@@ -174,8 +174,9 @@ remove_block() {
     !inb && $0 == b { inb = 1; buf = $0 "\n"; next }
     inb { buf = buf $0 "\n"; if ($0 == e) { inb = 0; buf = "" }; next }
     { print }
-    END { if (inb) { printf "%s", buf; print "warning: unclosed block in " FILENAME > "/dev/stderr" } }
-  ' "$f" >"$f.tmp" && mv "$f.tmp" "$f"
+    END { if (inb) { printf "%s", buf; exit 3 } }
+  ' "$f" >"$f.tmp" || { rm -f "$f.tmp"; return 1; }
+  mv "$f.tmp" "$f"
 }
 
 # Appending to a file without a final newline would join the last line.
@@ -187,7 +188,12 @@ append_line() {
 }
 
 install_block() {
-  remove_block "$1" "$BEGIN_MARK" "$END_MARK"
+  # An unclosed block left as is: a new end marker after it would let the
+  # next run delete the user's lines in between.
+  if ! remove_block "$1" "$BEGIN_MARK" "$END_MARK"; then
+    echo "⚠️  $1 has \"$BEGIN_MARK\" without \"$END_MARK\"; fix it by hand, skipped." >&2
+    return 0
+  fi
   append_line "$1" "$FLEET_BLOCK"
 }
 
