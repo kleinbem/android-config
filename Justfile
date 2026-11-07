@@ -15,7 +15,7 @@ status:
 # Apply declarative tuning (animations, 120Hz, DNS, keyboard, doze whitelist, debloat)
 [group("Fleet")]
 tune device="all":
-    @python3 scripts/apply-device.py {{device}}
+    @python3 scripts/apply-device.py {{quote(device)}}
 
 # Start Shizuku server daemon via ADB on all connected devices
 [group("Fleet")]
@@ -88,32 +88,34 @@ termux-provision device="phone":
 # Migrate media & WhatsApp directly between two devices
 [group("Migration")]
 migrate-media src="phone-old" dst="phone":
-    @python3 scripts/migrate.py media --source {{src}} --target {{dst}}
+    @python3 scripts/migrate.py media --source {{quote(src)}} --target {{quote(dst)}}
 
 # Pull WhatsApp, DCIM, and downloads into a local backup directory
 [group("Migration")]
 backup-media src="phone" out_dir="./backup":
-    @python3 scripts/migrate.py backup-media --source {{src}} --out {{out_dir}}
+    @python3 scripts/migrate.py backup-media --source {{quote(src)}} --out {{quote(out_dir)}}
 
 # Restore local backup directory to target device
 [group("Migration")]
 restore-media in_dir="./backup" dst="phone":
-    @python3 scripts/migrate.py restore-media --input {{in_dir}} --target {{dst}}
+    @python3 scripts/migrate.py restore-media --input {{quote(in_dir)}} --target {{quote(dst)}}
 
 # Sideload/clone third-party apps from source to destination device
 [group("Migration")]
 clone-apps src="phone-old" dst="phone" filter="":
     #!/usr/bin/env bash
-    if [ -n "{{filter}}" ]; then
-        python3 scripts/migrate.py clone-apps --source {{src}} --target {{dst}} --filter "{{filter}}"
-    else
-        python3 scripts/migrate.py clone-apps --source {{src}} --target {{dst}}
+    set -euo pipefail
+    args=(--source {{quote(src)}} --target {{quote(dst)}})
+    filter={{quote(filter)}}
+    if [ -n "$filter" ]; then
+        args+=(--filter "$filter")
     fi
+    python3 scripts/migrate.py clone-apps "${args[@]}"
 
 # Trigger Android MediaScanner to index newly pushed photos & files
 [group("Migration")]
 media-scan target="phone":
-    @python3 scripts/migrate.py scan --target {{target}}
+    @python3 scripts/migrate.py scan --target {{quote(target)}}
 
 # ==============================================================================
 # Diagnostics & Remote Control
@@ -164,45 +166,27 @@ wifi-adb target="phone":
 
 # Screen mirror via scrcpy (auto-detects USB or wireless)
 [group("Mirror")]
+[positional-arguments]
 scrcpy target="phone" *args:
     #!/usr/bin/env bash
-    set -e
-    TARGET="{{target}}"
+    set -euo pipefail
+    TARGET="$1"
+    shift
+    # Serial and IP from devices/<target>.yaml; an unknown target is a serial.
+    read -r SERIAL IP < <(python3 -c "import sys, yaml; c = yaml.safe_load(open(sys.argv[1])) or {}; print(c.get('serial', sys.argv[2]), c.get('ip') or '-')" "devices/$TARGET.yaml" "$TARGET" 2>/dev/null || echo "$TARGET -")
+    [ "$IP" = "-" ] && IP=""
     case $TARGET in
-        phone)
-            SERIAL="R5CX31EERDT"
-            IP="10.0.0.8"
-            BITRATE="16M"
-            ;;
-        tablet)
-            SERIAL="QBK6R20825000010"
-            IP="10.0.0.215"
-            BITRATE="24M"
-            ;;
-        dhirujaan)
-            SERIAL="RFCT90BVPNE"
-            IP="10.0.0.238"
-            BITRATE="16M"
-            ;;
-        phone-old)
-            SERIAL="R5CW617ZWCF"
-            IP=""
-            BITRATE="16M"
-            ;;
-        *)
-            SERIAL="$TARGET"
-            IP=""
-            BITRATE="16M"
-            ;;
+        tablet) BITRATE="24M" ;;
+        *) BITRATE="16M" ;;
     esac
 
-    if adb devices | grep -q "$SERIAL"; then
+    if adb devices | awk 'NR > 1 && $2 == "device" { print $1 }' | grep -qxF -- "$SERIAL"; then
         echo "🚀 Launching USB scrcpy for $TARGET ($BITRATE)..."
-        scrcpy -s "$SERIAL" --max-fps 60 --video-bit-rate "$BITRATE" --stay-awake --power-off-on-close {{args}}
+        scrcpy -s "$SERIAL" --max-fps 60 --video-bit-rate "$BITRATE" --stay-awake --power-off-on-close "$@"
     elif [ -n "$IP" ]; then
         echo "📡 Device not on USB. Connecting over WiFi ($IP)..."
         adb connect "$IP" 2>/dev/null || true
-        scrcpy --tcpip="$IP" --max-fps 60 --video-bit-rate "$BITRATE" --stay-awake --power-off-on-close {{args}}
+        scrcpy --tcpip="$IP" --max-fps 60 --video-bit-rate "$BITRATE" --stay-awake --power-off-on-close "$@"
     else
         echo "❌ Device $TARGET ($SERIAL) is not connected."
         exit 1
@@ -213,7 +197,7 @@ scrcpy target="phone" *args:
 tablet-desk:
     #!/usr/bin/env bash
     set -euo pipefail
-    SERIAL="QBK6R20825000010"
+    SERIAL=$(python3 -c "import yaml; print(yaml.safe_load(open('devices/tablet.yaml'))['serial'])")
     echo "🖥️  Bringing MatePad Pro into Desk Companion mode..."
     adb -s "$SERIAL" forward tcp:4747 tcp:4747
     adb -s "$SERIAL" reverse tcp:1701 tcp:1701
