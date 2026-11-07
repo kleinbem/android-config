@@ -56,9 +56,15 @@ termux-provision device="phone":
     #!/usr/bin/env bash
     set -euo pipefail
     DEV="{{device}}"
-    SERIAL=$(adb devices | grep -v "List" | grep "device$" | head -n 1 | cut -f1)
+    # The profile's device, over USB (serial) or wireless ADB (ip:5555).
+    read -r USB_SERIAL IP < <(python3 -c "import sys, yaml; c = yaml.safe_load(open(sys.argv[1])) or {}; print(c.get('serial', '-'), c.get('ip', '-'))" "devices/$DEV.yaml" 2>/dev/null || echo "$DEV -")
+    CONNECTED=$(adb devices | awk 'NR > 1 && $2 == "device" { print $1 }' || true)
+    SERIAL=""
+    for s in "$USB_SERIAL" "$IP:5555"; do
+        if grep -qxF -- "$s" <<<"$CONNECTED"; then SERIAL="$s"; break; fi
+    done
     if [ -z "$SERIAL" ]; then
-        echo "❌ No ADB device found."
+        echo "❌ $DEV ($USB_SERIAL) is not connected over ADB."
         exit 1
     fi
     echo "📱 Pushing Termux provisioning script to $SERIAL ($DEV)..."

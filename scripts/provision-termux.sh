@@ -7,7 +7,8 @@
 set -euo pipefail
 
 DEVICE_NAME="${1:-$(getprop ro.product.model 2>/dev/null || echo "device")}"
-DEVICE_TAG="$(echo "$DEVICE_NAME" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-')"
+# printf, not echo: a trailing newline would become a trailing "-" in the tag.
+DEVICE_TAG="$(printf '%s' "$DEVICE_NAME" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-')"
 PREFIX="/data/data/com.termux/files/usr"
 
 echo "📱 Setting up Termux for device: $DEVICE_NAME ($DEVICE_TAG)..."
@@ -34,8 +35,10 @@ echo "   $PUB_KEY"
 mkdir -p /sdcard/Download 2>/dev/null || true
 echo "$PUB_KEY" >"/sdcard/Download/${DEVICE_TAG}_termux.pub" 2>/dev/null || true
 
-# 3. Fleet ~/.ssh/config
-cat <<'EOF' >~/.ssh/config
+# 3. Fleet hosts in their own file, included from ~/.ssh/config so the
+# user's own entries survive a re-run.
+FLEET_SSH_CONF="$HOME/.ssh/kleinbem-fleet.conf"
+cat <<'EOF' >"$FLEET_SSH_CONF"
 # ─── Workstation Herdr (Live Agent Session) ───
 Host herdr
     HostName 100.117.212.232
@@ -91,6 +94,13 @@ Host orin
     IdentityFile ~/.ssh/id_ed25519
     StrictHostKeyChecking accept-new
 EOF
+chmod 600 "$FLEET_SSH_CONF"
+touch ~/.ssh/config
+if ! grep -qxF "Include $FLEET_SSH_CONF" ~/.ssh/config; then
+  # Include must come before any Host block to apply globally.
+  { echo "Include $FLEET_SSH_CONF"; echo; cat ~/.ssh/config; } >~/.ssh/config.new
+  mv ~/.ssh/config.new ~/.ssh/config
+fi
 chmod 600 ~/.ssh/config
 
 # 4. Smart CLI Launchers in $PREFIX/bin
@@ -144,25 +154,33 @@ exec "$PREFIX/bin/herdr" "$@"
 EOF
 chmod +x "$PREFIX/bin/agents"
 
-# 5. Shell profile integration
-cat <<'EOF' >~/.bashrc
-# Kleinbem Fleet shortcuts
-alias herdr="herdr"
-alias herdr-lan="herdr-lan"
-alias nvme="nvme"
-alias nvme-lan="nvme-lan"
-alias agents="agents"
-alias corepi="ssh corepi"
-alias hass="ssh hass"
-alias nas="ssh nas"
-alias orin="ssh orin"
-EOF
+# 5. Shell profile integration: one managed block, replaced on re-run;
+# the rest of each rc file stays as the user wrote it.
+BEGIN_MARK="# >>> kleinbem fleet >>>"
+END_MARK="# <<< kleinbem fleet <<<"
+FLEET_BLOCK="$BEGIN_MARK
+alias corepi=\"ssh corepi\"
+alias hass=\"ssh hass\"
+alias nas=\"ssh nas\"
+alias orin=\"ssh orin\"
+$END_MARK"
 
-echo '[[ -f ~/.bashrc ]] && source ~/.bashrc' >~/.bash_profile
+# Older versions wrote an unmarked block; drop it once.
+sed -i '/^# Kleinbem Fleet shortcuts$/,/^alias orin="ssh orin"$/d' ~/.bashrc 2>/dev/null || true
 
-if [ -f ~/.zshrc ]; then
-  cat ~/.bashrc >~/.zshrc
-fi
+install_block() {
+  local rc="$1"
+  touch "$rc"
+  sed -i "/^$BEGIN_MARK\$/,/^$END_MARK\$/d" "$rc"
+  printf '%s\n' "$FLEET_BLOCK" >>"$rc"
+}
+
+install_block ~/.bashrc
+[ -f ~/.zshrc ] && install_block ~/.zshrc
+
+touch ~/.bash_profile
+grep -qxF '[[ -f ~/.bashrc ]] && source ~/.bashrc' ~/.bash_profile ||
+  echo '[[ -f ~/.bashrc ]] && source ~/.bashrc' >>~/.bash_profile
 
 echo "✅ Provisioning complete for $DEVICE_NAME!"
 echo "🚀 Type 'herdr' to connect."
