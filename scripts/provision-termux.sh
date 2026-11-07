@@ -167,6 +167,7 @@ $END_MARK"
 
 # Deletes the lines from $2 to $3 (exact lines) in file $1, but only when
 # both are there: a range without its end would take the rest of the file.
+# Returns 3 for an unclosed block (file unchanged); other errors abort.
 remove_block() {
   local f="$1"
   [ -f "$f" ] || return 0
@@ -175,7 +176,7 @@ remove_block() {
     inb { buf = buf $0 "\n"; if ($0 == e) { inb = 0; buf = "" }; next }
     { print }
     END { if (inb) { printf "%s", buf; exit 3 } }
-  ' "$f" >"$f.tmp" || { rm -f "$f.tmp"; return 1; }
+  ' "$f" >"$f.tmp" || { local rc=$?; rm -f "$f.tmp"; return "$rc"; }
   mv "$f.tmp" "$f"
 }
 
@@ -190,9 +191,14 @@ append_line() {
 install_block() {
   # An unclosed block left as is: a new end marker after it would let the
   # next run delete the user's lines in between.
-  if ! remove_block "$1" "$BEGIN_MARK" "$END_MARK"; then
+  local rc=0
+  remove_block "$1" "$BEGIN_MARK" "$END_MARK" || rc=$?
+  if [ "$rc" -eq 3 ]; then
     echo "⚠️  $1 has \"$BEGIN_MARK\" without \"$END_MARK\"; fix it by hand, skipped." >&2
     return 0
+  elif [ "$rc" -ne 0 ]; then
+    echo "❌ Could not update $1 (exit $rc)." >&2
+    exit "$rc"
   fi
   append_line "$1" "$FLEET_BLOCK"
 }
