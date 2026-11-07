@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 import subprocess
+import sys
+
+ADB_TIMEOUT = 15
+
 
 def get_devices():
-    out = subprocess.check_output(['adb', 'devices'], text=True)
+    try:
+        out = subprocess.check_output(['adb', 'devices'], text=True, timeout=ADB_TIMEOUT)
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"❌ Could not list ADB devices: {e}")
+        sys.exit(1)
     devs = []
     for line in out.splitlines()[1:]:
         if '\tdevice' in line:
@@ -11,8 +19,19 @@ def get_devices():
 
 def adb(serial, *args):
     cmd = ['adb', '-s', serial] + list(args)
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=ADB_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return ''
     return res.stdout.strip()
+
+def oneui_suffix(raw):
+    """' (One UI 6.1)' for ro.build.version.oneui=60100, '' if absent or odd."""
+    try:
+        return f" (One UI {int(raw) / 10000:.1f})"
+    except ValueError:
+        return ''
+
 
 def main():
     devs = get_devices()
@@ -69,7 +88,7 @@ def main():
                 current_focus = line.split('Window{')[-1].split('}')[0].strip()
 
         print(f"\n🔹 {model} [{s}]")
-        print(f"   OS: Android {android_v}" + (f" (One UI {int(oneui_v)/10000:.1f})" if oneui_v else ""))
+        print(f"   OS: Android {android_v}" + oneui_suffix(oneui_v))
         print(f"   Battery: {level} ({status}, {temp}, AC={ac}, USB={usb})")
         print(f"   NetBird: {netbird_ip}")
         print(f"   Shizuku: {shizuku}")

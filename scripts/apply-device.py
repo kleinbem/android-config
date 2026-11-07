@@ -5,8 +5,15 @@ import subprocess
 import yaml
 import glob
 
+ADB_TIMEOUT = 60
+
+
 def get_connected_devices():
-    out = subprocess.check_output(['adb', 'devices'], text=True)
+    try:
+        out = subprocess.check_output(['adb', 'devices'], text=True, timeout=ADB_TIMEOUT)
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"❌ Could not list ADB devices: {e}")
+        sys.exit(1)
     devs = {}
     for line in out.splitlines()[1:]:
         if '\tdevice' in line:
@@ -14,15 +21,32 @@ def get_connected_devices():
             devs[parts[0]] = parts[1]
     return devs
 
+failures = []
+
+
 def adb(serial, *args):
+    """Run an adb command; record and print a failure instead of hiding it."""
     cmd = ['adb', '-s', serial] + list(args)
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=ADB_TIMEOUT)
+    except (OSError, subprocess.SubprocessError) as e:
+        failures.append(' '.join(args))
+        print(f"   ❌ {' '.join(args)}: {e}")
+        return ''
+    if res.returncode != 0:
+        failures.append(' '.join(args))
+        detail = (res.stderr.strip() or res.stdout.strip()).splitlines()
+        print(f"   ❌ {' '.join(args)}: {detail[-1] if detail else f'exit {res.returncode}'}")
     return res.stdout.strip()
 
 def apply_device(profile_path, connected_serials):
     with open(profile_path, 'r') as f:
         cfg = yaml.safe_load(f)
-    
+    if not isinstance(cfg, dict):
+        print(f"⚠️  Profile {profile_path} is empty or not a mapping. Skipping.")
+        return False
+    failures.clear()
+
     name = cfg.get('name', os.path.basename(profile_path).replace('.yaml', ''))
     serial = cfg.get('serial')
     
@@ -82,8 +106,7 @@ def apply_device(profile_path, connected_serials):
     if debloat:
         print(f"🗑️  Debloating {len(debloat)} packages...")
         for pkg in debloat:
-            res = adb(serial, 'shell', 'pm', 'disable-user', '--user', '0', pkg)
-            # ignore output unless error
+            adb(serial, 'shell', 'pm', 'disable-user', '--user', '0', pkg)
 
     # 7. Permissions
     perms = cfg.get('permissions', {})
@@ -113,6 +136,9 @@ def apply_device(profile_path, connected_serials):
             print(f"⚙️  Setting {namespace}.{key} = {val}...")
             adb(serial, 'shell', 'settings', 'put', namespace, key, str(val))
 
+    if failures:
+        print(f"⚠️  {name}: {len(failures)} command(s) failed (see ❌ above).")
+        return False
     print(f"✅ Configuration applied cleanly to {name}!")
     return True
 
@@ -138,11 +164,17 @@ def main():
         profiles = [profile]
 
     success_count = 0
+    failed = []
     for p in profiles:
         if apply_device(p, connected):
             success_count += 1
+        elif failures:
+            failed.append(os.path.basename(p))
 
-    print(f"\n🎉 Finished applying configurations ({success_count} device(s) updated).")
+    print(f"\n🎉 Finished applying configurations ({success_count} device(s) updated cleanly).")
+    if failed:
+        print(f"❌ Failures on: {', '.join(failed)}")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
