@@ -22,8 +22,8 @@ def main() -> int:
     src, out = sys.argv[1], sys.argv[2]
     with open(src, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
-    hosts = data.get("ssh_known_hosts") or {}
-    if not hosts:
+    hosts = data.get("ssh_known_hosts") if isinstance(data, dict) else None
+    if not isinstance(hosts, dict) or not hosts:
         sys.exit(
             f"error: {src} has no ssh_known_hosts section; "
             "pull nix-config and run `just dev::sync-agent` there"
@@ -31,9 +31,15 @@ def main() -> int:
 
     lines = []
     for name, entry in sorted(hosts.items()):
-        names = entry.get("host_names") or []
-        key = entry.get("public_key") or ""
-        if not names or not KEY_RE.match(key):
+        entry = entry if isinstance(entry, dict) else {}
+        names = entry.get("host_names")
+        key = entry.get("public_key")
+        if (
+            not isinstance(names, list)
+            or not names
+            or not isinstance(key, str)
+            or not KEY_RE.match(key)
+        ):
             sys.exit(
                 f"error: ssh_known_hosts.{name} has no host names or a malformed key"
             )
