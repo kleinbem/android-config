@@ -52,3 +52,4 @@ just tablet-desk                    # MatePad Pro desk companion mode (Weylus ca
 * `scripts/migrate.py`: Direct migration and backup tool for WhatsApp, DCIM, and APKs.
 * `scripts/status.py`: Dashboard querying battery, thermal, and network state.
 * `scripts/provision-termux.sh`: Termux environment bootstrapper.
+* `scripts/gen-known-hosts.py`: Pinned fleet SSH host keys (from nix-config's INFRASTRUCTURE.yaml) as a known_hosts file for Termux.

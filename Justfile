@@ -72,8 +72,24 @@ termux-provision device="phone":
         echo "❌ $DEV ($USB_SERIAL) is not connected over ADB."
         exit 1
     fi
+    # Pinned fleet host keys from nix-config's INFRASTRUCTURE.yaml (the
+    # workspace root's symlink, found from a primary checkout or a .ws one).
+    INFRA="${INFRA_YAML:-}"
+    if [ -z "$INFRA" ]; then
+        for d in .. ../..; do
+            if [ -e "$d/INFRASTRUCTURE.yaml" ]; then INFRA="$d/INFRASTRUCTURE.yaml"; break; fi
+        done
+    fi
+    if [ -z "$INFRA" ]; then
+        echo "❌ INFRASTRUCTURE.yaml not found; set INFRA_YAML=<path>."
+        exit 1
+    fi
+    KNOWN_HOSTS="$(mktemp)"
+    trap 'rm -f "$KNOWN_HOSTS"' EXIT
+    python3 scripts/gen-known-hosts.py "$INFRA" "$KNOWN_HOSTS"
     echo "📱 Pushing Termux provisioning script to $SERIAL ($DEV)..."
     adb -s "$SERIAL" push scripts/provision-termux.sh /sdcard/Download/setup-termux.sh
+    adb -s "$SERIAL" push "$KNOWN_HOSTS" /sdcard/Download/kleinbem_known_hosts
     adb -s "$SERIAL" shell pm grant com.termux android.permission.READ_EXTERNAL_STORAGE 2>/dev/null || true
     adb -s "$SERIAL" shell cmd appops set com.termux MANAGE_EXTERNAL_STORAGE allow 2>/dev/null || true
     adb -s "$SERIAL" shell am start -n com.termux/.app.TermuxActivity >/dev/null 2>&1 || true
