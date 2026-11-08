@@ -35,7 +35,18 @@ echo "   $PUB_KEY"
 mkdir -p /sdcard/Download 2>/dev/null || true
 echo "$PUB_KEY" >"/sdcard/Download/${DEVICE_TAG}_termux.pub" 2>/dev/null || true
 
-# 3. Fleet hosts in their own file, included from ~/.ssh/config so the
+# 3. Pinned fleet host keys, generated from nix-config by
+# `just termux-provision` (scripts/gen-known-hosts.py) and pushed beside
+# this script, so ssh never trusts a fleet host on first use.
+KNOWN_HOSTS_SRC="/sdcard/Download/kleinbem_known_hosts"
+if [ ! -s "$KNOWN_HOSTS_SRC" ]; then
+  echo "❌ $KNOWN_HOSTS_SRC is missing; run 'just termux-provision' from android-config." >&2
+  exit 1
+fi
+cp "$KNOWN_HOSTS_SRC" ~/.ssh/kleinbem_known_hosts
+chmod 600 ~/.ssh/kleinbem_known_hosts
+
+# Fleet hosts in their own file, included from ~/.ssh/config so the
 # user's own entries survive a re-run.
 FLEET_SSH_CONF="$HOME/.ssh/kleinbem-fleet.conf"
 cat <<'EOF' >"$FLEET_SSH_CONF"
@@ -46,7 +57,6 @@ Host herdr
     IdentityFile ~/.ssh/id_ed25519
     RemoteCommand herdr
     RequestTTY yes
-    StrictHostKeyChecking accept-new
 
 Host herdr-lan
     HostName 10.0.0.5
@@ -54,45 +64,43 @@ Host herdr-lan
     IdentityFile ~/.ssh/id_ed25519
     RemoteCommand herdr
     RequestTTY yes
-    StrictHostKeyChecking accept-new
 
 # ─── Workstation Standard Shell ───
 Host nvme
     HostName 100.117.212.232
     User martin
     IdentityFile ~/.ssh/id_ed25519
-    StrictHostKeyChecking accept-new
 
 Host nvme-lan
     HostName 10.0.0.5
     User martin
     IdentityFile ~/.ssh/id_ed25519
-    StrictHostKeyChecking accept-new
 
 # ─── Fleet Infrastructure Nodes (NetBird Mesh) ───
 Host corepi
     HostName 100.117.146.201
     User martin
     IdentityFile ~/.ssh/id_ed25519
-    StrictHostKeyChecking accept-new
 
 Host hass
     HostName 100.117.163.227
     User martin
     IdentityFile ~/.ssh/id_ed25519
-    StrictHostKeyChecking accept-new
 
 Host nas
     HostName 100.117.39.136
     User martin
     IdentityFile ~/.ssh/id_ed25519
-    StrictHostKeyChecking accept-new
 
 Host orin
     HostName 100.117.37.104
     User martin
     IdentityFile ~/.ssh/id_ed25519
-    StrictHostKeyChecking accept-new
+
+# Only the pinned keys count for fleet hosts; a changed key fails closed.
+Host herdr herdr-lan nvme nvme-lan corepi hass nas orin
+    UserKnownHostsFile ~/.ssh/kleinbem_known_hosts
+    StrictHostKeyChecking yes
 EOF
 chmod 600 "$FLEET_SSH_CONF"
 touch ~/.ssh/config
