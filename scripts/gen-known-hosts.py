@@ -43,10 +43,10 @@ def main() -> int:
             sys.exit(
                 f"error: ssh_known_hosts.{name} has no host names or a malformed key"
             )
-        bad = [n for n in names if not NAME_RE.match(str(n))]
+        bad = [n for n in names if not isinstance(n, str) or not NAME_RE.match(n)]
         if bad:
             sys.exit(f"error: ssh_known_hosts.{name}: unexpected host name(s) {bad}")
-        lines.append(f"{','.join(map(str, names))} {key}\n")
+        lines.append(f"{','.join(names)} {key}\n")
 
     with open(out, "w", encoding="utf-8") as f:
         f.writelines(lines)
